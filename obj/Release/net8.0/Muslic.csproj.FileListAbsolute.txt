@@ -1,0 +1,14 @@
+D:\Muslic\bin\Release\net8.0\Muslic.exe
+D:\Muslic\bin\Release\net8.0\Muslic.deps.json
+D:\Muslic\bin\Release\net8.0\Muslic.runtimeconfig.json
+D:\Muslic\bin\Release\net8.0\Muslic.dll
+D:\Muslic\bin\Release\net8.0\Muslic.pdb
+D:\Muslic\obj\Release\net8.0\Muslic.GeneratedMSBuildEditorConfig.editorconfig
+D:\Muslic\obj\Release\net8.0\Muslic.AssemblyInfoInputs.cache
+D:\Muslic\obj\Release\net8.0\Muslic.AssemblyInfo.cs
+D:\Muslic\obj\Release\net8.0\Muslic.csproj.CoreCompileInputs.cache
+D:\Muslic\obj\Release\net8.0\Muslic.dll
+D:\Muslic\obj\Release\net8.0\refint\Muslic.dll
+D:\Muslic\obj\Release\net8.0\Muslic.pdb
+D:\Muslic\obj\Release\net8.0\Muslic.genruntimeconfig.cache
+D:\Muslic\obj\Release\net8.0\ref\Muslic.dll

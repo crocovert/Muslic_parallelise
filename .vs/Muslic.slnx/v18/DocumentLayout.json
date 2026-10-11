@@ -1,0 +1,40 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\Muslic\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{AA4B8444-7E5B-3897-9CBC-7CD55977AC31}|Muslic.csproj|d:\\muslic\\muslic.csproj||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|",
+      "RelativeMoniker": "D:0:0:{AA4B8444-7E5B-3897-9CBC-7CD55977AC31}|Muslic.csproj|solutionrelative:muslic.csproj||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 1,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:129:0:{1fc202d4-d401-403c-9834-5b218574bb67}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Muslic",
+              "DocumentMoniker": "D:\\Muslic\\Muslic.csproj",
+              "RelativeDocumentMoniker": "Muslic.csproj",
+              "ToolTip": "D:\\Muslic\\Muslic.csproj",
+              "RelativeToolTip": "Muslic.csproj",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
+              "WhenOpened": "2026-10-07T11:55:48.068Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
