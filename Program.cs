@@ -3,28 +3,28 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Collections.Concurrent;
-using System.Globalization;
-using System.Threading;
 
 namespace Muslic
 {
-    partial class Program
+    class Program
     {
         static void Main(string[] args)
         {
             if (args.Count() > 3)
             {
-                // Appeler la version parallelisée
-                Program.ExecuteParallelAffectation_OD(args[0], args[1], args[2], args[3], args.Count() > 4 ? args[4] : null);
+                string nom_reseau = args[0];
+                string nom_matrice = args[1];
+                string nom_sortie = args[2];
+                string nom_parametres = args[3];
+                string nom_penalites = null;
+                if (args.Count() > 4)
+                {
+                    nom_penalites = args[4];
+                }
+                affectation_tc(nom_reseau, nom_matrice, nom_sortie, nom_parametres, nom_penalites);
             }
-        }
-        // Point d'entree appele par Main : meme parametres que affectation_tc (parallelisee sur les OD)
-        public static void ExecuteParallelAffectation_OD(string nom_reseau, string nom_matrice, string nom_sortie, string nom_parametres, string nom_penalites)
-        {
-            affectation_tc(nom_reseau, nom_matrice, nom_sortie, nom_parametres, nom_penalites);
-        }
 
+        }
         public static void Ecrit_parametres(Param_affectation_horaire parametres, string nom_fichier_ini)
         {
 
@@ -938,15 +938,19 @@ namespace Muslic
                         DateTime t1 = DateTime.Now;
                         fich_log.WriteLine("Computation start time: " + t1.ToString("dddd dd MMMM yyyy HH:mm:ss.fff"));
                         fich_log.Flush();
-                        OdParallel od_parallel = new OdParallel(projet, turns, transfers, flux_matrice.Length, ctop, cleft, avancement,
-                            fich_sortie, fich_sortie2, fich_od, fich_noeuds, fich_detour, fich_isoles, fich_log);
                     lec1:
                         while (fichier_matrice.EndOfStream == false)
                         {
                         lecture:
                             projet.param_affectation_horaire.nb_pop = 0;
                             chaine = fichier_matrice.ReadLine();
-                            long posLecture = flux_matrice.Position; // l'affichage d'avancement est fait, dans l'ordre, par OdParallel
+                            if (avancement < (int)((100 * flux_matrice.Position) / flux_matrice.Length))
+                            {
+                                Console.SetCursorPosition(cleft, ctop);
+                                Console.Write("Shortest paths computing...:" + ((100 * flux_matrice.Position) / flux_matrice.Length).ToString() + "%");
+                                avancement = (int)((100 * flux_matrice.Position) / flux_matrice.Length);
+
+                            }
                             if (chaine.Trim().Length == 0) goto lec1;
                             if (chaine == "")
                             {
@@ -1633,762 +1637,15 @@ namespace Muslic
 
 
                             //if (projet.reseaux[projet.reseau_actif].matrices[0].o[p].d.Count > 0)
-                            // ---- test de doublon (identique a l'original, evalue sequentiellement) ----
-                            bool skip = false;
                             if (sens == 1)
                             {
                                 if (p1 == p && jour1 == jour && horaire1 == horaire && sens1 == sens && ch.Length < 13)
                                 {
                                     q1 = q;
-                                    skip = true;
+
+                                    goto fin_gga;
                                 }
-                                else
-                                {
-                                    p1 = p; q1 = q; jour1 = jour; horaire1 = horaire; sens1 = sens;
-                                }
-                            }
-                            if (sens == 2)
-                            {
-                                if (q1 == q && jour1 == jour && horaire1 == horaire && sens1 == sens && ch.Length < 13)
-                                {
-                                    p1 = p;
-                                    skip = true;
-                                }
-                                else
-                                {
-                                    p1 = p; q1 = q; jour1 = jour; horaire1 = horaire; sens1 = sens;
-                                }
-                            }
-                            // ---- envoi de l'OD au calcul parallele ----
-                            od_parallel.Submit(new OdTask
-                            {
-                                p = p, q = q, libod = libod, chaine = chaine, od = od, horaire = horaire,
-                                jour = jour, sens = sens, skip = skip, filtre = filtre, pos = posLecture,
-                                snap = od_parallel.Snapshot(projet.param_affectation_horaire)
-                            });
-
-                        }
-                        od_parallel.Finish(); // attend les calculs, ecrit les sorties restantes, cumule volumes/transferts
-                        fichier_matrice.Close();
-                        flux_matrice.Close();
-                        DateTime t2 = DateTime.Now;
-                        fich_log.WriteLine("Computation end time: " + t2.ToString("dddd dd MMMM yyyy HH:mm:ss.fff"));
-                        fich_log.WriteLine("Computation duration:" + t2.Subtract(t1).TotalSeconds + " sec");
-                        fich_log.Close();
-
-                        fich_sortie.Close();
-                        fich_sortie2.Close();
-                        fich_od.Close();
-                        fich_noeuds.Close();
-                        fich_detour.Close();
-                        fich_isoles.Close();
-
-
-
-
-                        for (i = 0; i < projet.reseaux[projet.reseau_actif].links.Count; i++)
-                        {
-                            if (projet.reseaux[projet.reseau_actif].links[i].volau > 0 || projet.reseaux[projet.reseau_actif].links[i].boai > 0 || projet.reseaux[projet.reseau_actif].links[i].alij > 0)
-                            {
-                                string texte = projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[i].no].i;
-                                texte += ";" + projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[i].nd].i + ";" + projet.reseaux[projet.reseau_actif].links[i].ligne.ToString("0");
-                                texte += ";" + projet.reseaux[projet.reseau_actif].links[i].volau.ToString("0.00");
-                                texte += ";" + projet.reseaux[projet.reseau_actif].links[i].boai.ToString("0.00");
-                                texte += ";" + projet.reseaux[projet.reseau_actif].links[i].alij.ToString("0.00");
-                                texte += ";" + projet.reseaux[projet.reseau_actif].links[i].texte;
-                                texte += ";" + projet.reseaux[projet.reseau_actif].links[i].type;
-                                texte += ";" + projet.reseaux[projet.reseau_actif].links[i].toll.ToString("0.000");
-
-                                fich_result.WriteLine(texte);
-                            }
-
-                        }
-
-
-                        fich_result.Close();
-                        //projet.reseaux.Remove(projet.reseaux[projet.reseau_actif]);
-                        if (projet.param_affectation_horaire.sortie_services == true)
-                        {
-                            System.IO.StreamWriter fich_services = new System.IO.StreamWriter(projet.param_affectation_horaire.nom_sortie + "_services.txt", false, System.Text.Encoding.UTF8);
-                            string texte = "";
-                            fich_services.WriteLine("i;j;ligne;service;hd;hf;regime;volau;boia;alij;texte;type");
-                            for (i = 0; i < projet.reseaux[projet.reseau_actif].links.Count; i++)
-                            {
-                                if (projet.reseaux[projet.reseau_actif].links[i].services.Count > 0)
-                                {
-                                    for (j = 0; j < projet.reseaux[projet.reseau_actif].links[i].services.Count; j++)
-                                    {
-                                        if (projet.reseaux[projet.reseau_actif].links[i].services[j].volau > 0)
-                                        {
-                                            texte = projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[i].no].i;
-                                            texte += ";" + projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[i].nd].i + ";" + projet.reseaux[projet.reseau_actif].links[i].ligne.ToString("0");
-                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].services[j].numero;
-                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].services[j].hd;
-                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].services[j].hf;
-                                            texte += ";" + projet.reseaux[projet.reseau_actif].nom_calendrier[projet.reseaux[projet.reseau_actif].links[i].services[j].regime];
-                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].services[j].volau.ToString("0.00");
-                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].services[j].boat.ToString("0.00");
-                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].services[j].alit.ToString("0.00");
-                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].texte;
-                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].type;
-                                            fich_services.WriteLine(texte);
-
-                                        }
-                                    }
-                                }
-
-
-                            }
-                            fich_services.Close();
-
-                        }
-                        if (projet.param_affectation_horaire.sortie_turns == true)
-                        {
-                            System.IO.StreamWriter fich_turns = new System.IO.StreamWriter(projet.param_affectation_horaire.nom_sortie + "_transferts.txt", false, System.Text.Encoding.UTF8);
-                            string texte = "";
-                            //int k=0;
-                            fich_turns.WriteLine("j;i;lignei;k;lignek;textei;textek;volau");
-
-                            foreach (Turn virage in transfers.Keys)
-                            {
-
-                                if (transfers[virage] > 0)
-                                {
-                                    texte = projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[virage.arci].nd].i;
-
-                                    texte += ";" + projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[virage.arci].no].i;
-                                    texte += ";" + projet.reseaux[projet.reseau_actif].links[virage.arci].ligne;
-                                    texte += ";" + projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[virage.arcj].nd].i;
-                                    texte += ";" + projet.reseaux[projet.reseau_actif].links[virage.arcj].ligne;
-                                    texte += ";" + projet.reseaux[projet.reseau_actif].links[virage.arci].texte;
-                                    texte += ";" + projet.reseaux[projet.reseau_actif].links[virage.arcj].texte;
-                                    texte += ";" + transfers[virage];
-                                    fich_turns.WriteLine(texte);
-                                }
-
-
-
-
-
-
-
-
-
-
-                            }
-                            fich_turns.Close();
-
-                        }
-
-
-                    }
-
-
-                    //algorithme de Dijkstra
-
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-                    //algorithme de Dijkstra
-
-
-                    //algorithme de Dijkstra
-
-                    else if (projet.param_affectation_horaire.algorithme == 2)
-                    {
-
-
-                    }
-                }
-
-
-            }
-        }
-
-        public class vecteur
-        {
-            public List<float> d = new List<float>(0);
-
-        }
-
-
-        public class Turn
-        {
-            public int arci, arcj;
-
-            public override bool Equals(Object virage)
-            {
-                if (arci == ((Turn)virage).arci && arcj == ((Turn)virage).arcj)
-                {
-                    return true;
-                }
-                else
-                {
-                    return false;
-                }
-            }
-            public override int GetHashCode()
-            {
-                return arci.GetHashCode() ^ arcj.GetHashCode();
-            }
-
-        }
-
-        public class turn
-        {
-            public int numero;
-            public float temps;
-            public bool is_valid = false;
-            //public float volau=0;
-
-        }
-
-        public class node
-        {
-            public float x, y, tempst = 1e38f, tmap = 0, tatt, temps, cout, ncor, ttoll;
-            public string i;
-            public bool ci = false, is_valid = true, is_visible = false, is_intersection = false;
-            public List<int> pred = new List<int>();
-            public List<int> succ = new List<int>();
-            //public List<float> ui = new List<float>();
-            public string texte;
-            public string pole;
-        }
-        public class Link_num
-        {
-            public String i, j;
-            public int line;
-            public override bool Equals(object num_link)
-            {
-                if (i == ((Link_num)num_link).i && j == ((Link_num)num_link).j && line == ((Link_num)num_link).line)
-                {
-                    return true;
-                }
-                else
-                {
-                    return false;
-                }
-            }
-            public override int GetHashCode()
-            {
-                return (i.GetHashCode() ^ j.GetHashCode() ^ line.GetHashCode());
-            }
-        }
-        public class link
-        {
-            public link CloneL()
-            {
-                link c = (link)MemberwiseClone();
-                c.services = new List<Service>(services.Count);
-                foreach (Service s in services) c.services.Add(s.CloneS());
-                return c;
-            }
-            public float longueur, temps, cout, v0, vsat, tatt, tcor, tveh, tmap, tatt1, a, b, n, volau, lanes, h, l, alij, boai, ncorr, toll = 0, ttoll;
-            public int no, nd, service, vdf, touche, pivot, ligne, turn_pivot = -1;//,nb_voies;
-            public bool is_queue, is_valid = true;
-            //public List<turn> arci = new List<turn>();
-            //public List<turn> arcj = new List<turn>();
-            //public List<float> ul = new List<float>();
-            public List<Service> services = new List<Service>();
-            public string texte, modes, pole, type = "0", poleV2;
-            /*public float fd(float volau, float len, float precha, float cap, float v0, float a, float b, float n)
-            {
-                float vc, t0, delay;
-                t0 = len / v0;
-                vc = (volau + precha) / cap;
-                if (vc < 1)
-                {
-                    delay = t0 * (a - b * vc) / (a - vc);
-                }
-                else
-                {
-                    delay = t0 * ((a * (1f - b)) / (n * (a - 1f) * (a - 1f))) * (float)Math.Pow(vc, n) + (n * (a - b) * (a - 1f) - a * (1f - b)) / (n * (a - 1f) * (a - 1f));
-                }
-                return delay;
-            }*/
-        }
-
-
-        public class matrix
-        {
-            public string nom;
-            public List<vecteur> o = new List<vecteur>(0);
-
-        }
-
-        public class network
-        {
-            public string nom;
-            public List<link> links = new List<link>(20000);
-            public List<node> nodes = new List<node>(10000);
-            public float xl = 1e38f, xu = -1e38f, yl = 1e38f, yu = -1e38f;
-            public List<matrix> matrices = new List<matrix>();
-            public Dictionary<string, int> numnoeud = new Dictionary<string, int>();
-            public Dictionary<string, int> num_calendrier = new Dictionary<string, int>();
-            public List<string> nom_calendrier = new List<string>();
-            public Dictionary<string, string> noms_arcs = new Dictionary<string, string>();
-            public int max_type = 0, nbturns = 0, nbservices = 0;
-        }
-
-        public class etude
-        {
-            public string nom;
-            public int reseau_actif;
-            public List<network> reseaux = new List<network>();
-            public Param_affectation_horaire param_affectation_horaire = new Param_affectation_horaire();
-
-        }
-
-        public class Param_affectation_horaire
-        {
-            public Param_affectation_horaire CloneParam()
-            {
-                Param_affectation_horaire c = (Param_affectation_horaire)MemberwiseClone();
-                c.coef_tmap = new Dictionary<String, float>(coef_tmap);
-                c.cmap = new Dictionary<String, float>(cmap);
-                c.cwait = new Dictionary<String, float>(cwait);
-                c.cboa = new Dictionary<String, float>(cboa);
-                c.tboa = new Dictionary<String, float>(tboa);
-                c.tboa_max = new Dictionary<String, float>(tboa_max);
-                c.cveh = new Dictionary<String, float>(cveh);
-                c.ctoll = new Dictionary<String, float>(ctoll);
-                return c;
-            }
-            static bool SameDic(Dictionary<String, float> a, Dictionary<String, float> b)
-            {
-                if (a.Count != b.Count) return false;
-                foreach (KeyValuePair<String, float> kv in a)
-                {
-                    float v;
-                    if (!b.TryGetValue(kv.Key, out v) || v != kv.Value) return false;
-                }
-                return true;
-            }
-            // egalite de tous les parametres de calcul/sortie (nb_pop et noms de fichiers exclus)
-            public bool SameAs(Param_affectation_horaire o)
-            {
-                return param_dijkstra == o.param_dijkstra && pu == o.pu && sortie_chemins == o.sortie_chemins && demitours == o.demitours
-                    && sortie_services == o.sortie_services && sortie_turns == o.sortie_turns && test_OK == o.test_OK && sortie_noeuds == o.sortie_noeuds
-                    && sortie_isoles == o.sortie_isoles && sortie_stops == o.sortie_stops && sortie_temps == o.sortie_temps && algorithme == o.algorithme
-                    && max_nb_buckets == o.max_nb_buckets && nb_jours == o.nb_jours && tmapmax == o.tmapmax && temps_max == o.temps_max
-                    && texte_coef_tmap == o.texte_coef_tmap && texte_cmap == o.texte_cmap && texte_cwait == o.texte_cwait && texte_cboa == o.texte_cboa
-                    && texte_tboa == o.texte_tboa && texte_tboa_max == o.texte_tboa_max && texte_cveh == o.texte_cveh && texte_toll == o.texte_toll
-                    && texte_filtre_sortie == o.texte_filtre_sortie
-                    && SameDic(coef_tmap, o.coef_tmap) && SameDic(cmap, o.cmap) && SameDic(cwait, o.cwait) && SameDic(cboa, o.cboa)
-                    && SameDic(tboa, o.tboa) && SameDic(tboa_max, o.tboa_max) && SameDic(cveh, o.cveh) && SameDic(ctoll, o.ctoll);
-            }
-            public string nom_reseau, nom_matrice, nom_sortie, nom_penalites;
-            public Dictionary<String, float> coef_tmap = new Dictionary<String, float>();
-            public Dictionary<String, float> cmap = new Dictionary<String, float>();
-            public Dictionary<String, float> cwait = new Dictionary<String, float>();
-            public Dictionary<String, float> cboa = new Dictionary<String, float>();
-            public Dictionary<String, float> tboa = new Dictionary<String, float>();
-            public Dictionary<String, float> tboa_max = new Dictionary<String, float>(1);
-            public Dictionary<String, float> cveh = new Dictionary<String, float>(1);
-            public Dictionary<String, float> ctoll = new Dictionary<String, float>(1);
-            public float param_dijkstra, pu;
-            public bool sortie_chemins, demitours = true, sortie_services = false, sortie_turns = false, test_OK = false, sortie_noeuds = true, sortie_isoles = false, sortie_stops = false;
-            public int sortie_temps;
-            public int algorithme = 1;
-            public float max_nb_buckets = 10000;
-            public int nb_jours = 0;
-            public string texte_coef_tmap;
-            public string texte_cmap;
-            public string texte_cwait;
-            public string texte_cboa;
-            public string texte_tboa;
-            public string texte_tboa_max;
-            public string texte_cveh, texte_toll;
-            public float tmapmax, temps_max = 120;
-            public int nb_pop = 0;
-            public string texte_filtre_sortie = "";
-        }
-
-        public class Service
-        {
-            public Service CloneS() { return (Service)MemberwiseClone(); }
-            public int numero;
-            public float hd, hf, delta = 0, boai = 0, alij = 0, alit = 0, boat = 0, volau = 0;
-            public int regime;
-        }
-
-        public class suivant
-        {
-            public List<int> classe = new List<int>();
-
-        }
-
-
-
-        public class Node
-        {
-            public string i = "";
-            public float x = 0, y = 0, tempst = 1e38f, tmap = 0, tatt, temps, cout, ncor, ttoll;
-            public string name = "";
-            public string pole, poleV2;
-            public List<int> in_nodes = new List<int>();
-            public List<int> out_nodes = new List<int>();
-            public void addincoming(int i)
-            {
-                this.in_nodes.Add(i);
-            }
-            public void addoutgoing(int i)
-            {
-                this.out_nodes.Add(i);
-            }
-
-        }
-
-        public class Link
-        {
-
-        }
-
-        // =====================================================================================
-        //  PARALLELISATION DU CALCUL DES OD
-        //  - la matrice est lue et interpretee sequentiellement (parametres par ligne, doublons)
-        //  - les OD de meme origine/jour/heure (ou destination/jour/heure) forment un "groupe" :
-        //    un calcul de plus court chemin + les OD suivantes qui reutilisent le meme arbre
-        //  - chaque groupe est calcule par un thread sur sa propre copie des arcs
-        //  - les sorties (_od, _temps, _chemins, _noeuds, _detour, _isoles, _log), l'affichage
-        //    d'avancement et les cumuls (volau, boai, alij, services, transferts) sont appliques
-        //    dans l'ordre d'origine de la matrice par un thread d'ecriture unique
-        // =====================================================================================
-        public class ParamSnap
-        {
-            public Param_affectation_horaire prm;
-        }
-
-        public class OdTask
-        {
-            public string p, q, libod, chaine;
-            public float od, horaire;
-            public int jour, sens;
-            public bool skip;
-            public HashSet<string> filtre;
-            public long pos;
-            public ParamSnap snap;
-        }
-
-        public class OdGroup
-        {
-            public long seq;
-            public List<OdTask> tasks = new List<OdTask>();
-        }
-
-        public class OdResult
-        {
-            public long seq;
-            public string od, sortie, sortie2, noeuds, detour, isoles, log;
-            public long[] positions;
-            public List<int> lkIdx = new List<int>();
-            public List<float> lkVolau = new List<float>(), lkBoai = new List<float>(), lkAlij = new List<float>();
-            public List<int> svIdx = new List<int>();   // index global du service (offsets par arc)
-            public List<float> svVolau = new List<float>(), svAlit = new List<float>(), svBoat = new List<float>();
-            public List<KeyValuePair<Turn, float>> transferts = new List<KeyValuePair<Turn, float>>();
-        }
-
-        public class OdWorker
-        {
-            public etude projet;
-            public Dictionary<Turn, float> transfers = new Dictionary<Turn, float>();
-            public List<List<int>> gga_nq = new List<List<int>>();
-            public ParamSnap lastSnap;
-            public Param_affectation_horaire lastPrm;
-        }
-
-        public class OdParallel
-        {
-            etude master;
-            Dictionary<Turn, float> turns, transfers;
-            long length;
-            int ctop, cleft, avancement;
-            StreamWriter w_sortie, w_sortie2, w_od, w_noeuds, w_detour, w_isoles, w_log;
-            int nThreads;
-            Thread[] workers;
-            Thread writer;
-            BlockingCollection<OdGroup> queue = new BlockingCollection<OdGroup>();
-            SemaphoreSlim window;
-            Dictionary<long, OdResult> results = new Dictionary<long, OdResult>();
-            long nextSeq = 0, totalGroups = -1;
-            OdGroup current;
-            ParamSnap lastSnap;
-            Exception failure;
-            double[] accVolau, accBoai, accAlij, accSvVolau, accSvAlit, accSvBoat;
-            int[] svOff;
-            Dictionary<Turn, double> trAcc = new Dictionary<Turn, double>();
-
-            public OdParallel(etude projet, Dictionary<Turn, float> turns, Dictionary<Turn, float> transfers, long length, int ctop, int cleft, int avancement,
-                StreamWriter fich_sortie, StreamWriter fich_sortie2, StreamWriter fich_od, StreamWriter fich_noeuds, StreamWriter fich_detour, StreamWriter fich_isoles, StreamWriter fich_log)
-            {
-                master = projet; this.turns = turns; this.transfers = transfers; this.length = length;
-                this.ctop = ctop; this.cleft = cleft; this.avancement = avancement;
-                w_sortie = fich_sortie; w_sortie2 = fich_sortie2; w_od = fich_od; w_noeuds = fich_noeuds; w_detour = fich_detour; w_isoles = fich_isoles; w_log = fich_log;
-
-                List<link> links = master.reseaux[master.reseau_actif].links;
-                svOff = new int[links.Count + 1];
-                for (int i = 0; i < links.Count; i++) svOff[i + 1] = svOff[i] + links[i].services.Count;
-                accVolau = new double[links.Count]; accBoai = new double[links.Count]; accAlij = new double[links.Count];
-                accSvVolau = new double[svOff[links.Count]]; accSvAlit = new double[svOff[links.Count]]; accSvBoat = new double[svOff[links.Count]];
-
-                nThreads = Environment.ProcessorCount;
-                int env;
-                if (int.TryParse(Environment.GetEnvironmentVariable("MUSLIC_THREADS"), out env) && env > 0) nThreads = env;
-                if (nThreads < 1) nThreads = 1;
-                window = new SemaphoreSlim(Math.Max(16, nThreads * 8));
-
-                CultureInfo culture = CultureInfo.CurrentCulture;
-                workers = new Thread[nThreads];
-                for (int t = 0; t < nThreads; t++)
-                {
-                    workers[t] = new Thread(() => WorkerLoop(culture)) { IsBackground = true };
-                    workers[t].Start();
-                }
-                writer = new Thread(() => WriterLoop(culture)) { IsBackground = true };
-                writer.Start();
-            }
-
-            // instantane des parametres de la ligne (reutilise l'instantane precedent s'il n'a pas change)
-            public ParamSnap Snapshot(Param_affectation_horaire prm)
-            {
-                if (lastSnap != null && lastSnap.prm.SameAs(prm)) return lastSnap;
-                lastSnap = new ParamSnap { prm = prm.CloneParam() };
-                return lastSnap;
-            }
-
-            void Fail(Exception e)
-            {
-                lock (results)
-                {
-                    if (failure == null) failure = e;
-                    Monitor.PulseAll(results);
-                }
-                try { queue.CompleteAdding(); } catch (Exception) { }
-            }
-
-            void CheckFailure()
-            {
-                Exception e;
-                lock (results) { e = failure; }
-                if (e != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e).Throw();
-            }
-
-            void Enqueue(OdGroup g)
-            {
-                while (!window.Wait(100)) CheckFailure();
-                CheckFailure();
-                queue.Add(g);
-            }
-
-            public void Submit(OdTask t)
-            {
-                if (!t.skip || current == null)
-                {
-                    if (current != null) Enqueue(current);
-                    current = new OdGroup { seq = nextSeq++ };
-                }
-                current.tasks.Add(t);
-            }
-
-            public void Finish()
-            {
-                if (current != null) { Enqueue(current); current = null; }
-                lock (results) { totalGroups = nextSeq; Monitor.PulseAll(results); }
-                queue.CompleteAdding();
-                foreach (Thread t in workers) t.Join();
-                writer.Join();
-                CheckFailure();
-
-                // cumuls dans le reseau principal (utilises par les ecritures finales _aff, _services, _transferts)
-                List<link> links = master.reseaux[master.reseau_actif].links;
-                for (int i = 0; i < links.Count; i++)
-                {
-                    links[i].volau = (float)accVolau[i]; links[i].boai = (float)accBoai[i]; links[i].alij = (float)accAlij[i];
-                    for (int j = 0; j < links[i].services.Count; j++)
-                    {
-                        Service s = links[i].services[j];
-                        s.volau = (float)accSvVolau[svOff[i] + j]; s.alit = (float)accSvAlit[svOff[i] + j]; s.boat = (float)accSvBoat[svOff[i] + j];
-                    }
-                }
-                foreach (KeyValuePair<Turn, double> kv in trAcc) transfers[kv.Key] = (float)kv.Value;
-            }
-
-            void WorkerLoop(CultureInfo culture)
-            {
-                try
-                {
-                    Thread.CurrentThread.CurrentCulture = culture;
-                    Thread.CurrentThread.CurrentUICulture = culture;
-                    OdWorker w = NewWorker();
-                    foreach (OdGroup g in queue.GetConsumingEnumerable())
-                    {
-                        CheckFailure();
-                        OdResult r = RunGroup(w, g);
-                        lock (results) { results[g.seq] = r; Monitor.PulseAll(results); }
-                    }
-                }
-                catch (Exception e) { Fail(e); }
-            }
-
-            // copie privee des arcs (les noeuds, la table des noeuds et les calendriers sont partages en lecture seule)
-            OdWorker NewWorker()
-            {
-                network src = master.reseaux[master.reseau_actif];
-                network net = new network();
-                net.nom = src.nom;
-                net.links = new List<link>(src.links.Count);
-                foreach (link l in src.links) net.links.Add(l.CloneL());
-                net.nodes = src.nodes;
-                net.numnoeud = src.numnoeud;
-                net.num_calendrier = src.num_calendrier;
-                net.nom_calendrier = src.nom_calendrier;
-                net.noms_arcs = src.noms_arcs;
-                net.max_type = src.max_type; net.nbturns = src.nbturns; net.nbservices = src.nbservices;
-                OdWorker w = new OdWorker();
-                w.projet = new etude();
-                w.projet.reseaux.Add(net);
-                w.projet.reseau_actif = 0;
-                return w;
-            }
-
-            OdResult RunGroup(OdWorker w, OdGroup g)
-            {
-                StringWriter s_od = new StringWriter(), s_sortie = new StringWriter(), s_sortie2 = new StringWriter(), s_noeuds = new StringWriter(),
-                    s_detour = new StringWriter(), s_isoles = new StringWriter(), s_log = new StringWriter();
-                OdResult r = new OdResult { seq = g.seq, positions = new long[g.tasks.Count] };
-                for (int k = 0; k < g.tasks.Count; k++)
-                {
-                    OdTask t = g.tasks[k];
-                    r.positions[k] = t.pos;
-                    if (t.snap != w.lastSnap)
-                    {
-                        w.lastSnap = t.snap;
-                        w.lastPrm = t.snap.prm.CloneParam();
-                    }
-                    w.projet.param_affectation_horaire = w.lastPrm;
-                    CalculeOD(t, w, turns, s_sortie, s_sortie2, s_od, s_noeuds, s_detour, s_isoles, s_log);
-                }
-                r.od = s_od.ToString(); r.sortie = s_sortie.ToString(); r.sortie2 = s_sortie2.ToString(); r.noeuds = s_noeuds.ToString();
-                r.detour = s_detour.ToString(); r.isoles = s_isoles.ToString(); r.log = s_log.ToString();
-
-                // recolte des cumuls du groupe (puis remise a zero pour que le groupe suivant parte de zero)
-                List<link> links = w.projet.reseaux[0].links;
-                for (int i = 0; i < links.Count; i++)
-                {
-                    link l = links[i];
-                    if (l.volau != 0 || l.boai != 0 || l.alij != 0)
-                    {
-                        r.lkIdx.Add(i); r.lkVolau.Add(l.volau); r.lkBoai.Add(l.boai); r.lkAlij.Add(l.alij);
-                        l.volau = 0; l.boai = 0; l.alij = 0;
-                    }
-                    for (int j = 0; j < l.services.Count; j++)
-                    {
-                        Service s = l.services[j];
-                        if (s.volau != 0 || s.alit != 0 || s.boat != 0)
-                        {
-                            r.svIdx.Add(svOff[i] + j); r.svVolau.Add(s.volau); r.svAlit.Add(s.alit); r.svBoat.Add(s.boat);
-                            s.volau = 0; s.alit = 0; s.boat = 0;
-                        }
-                    }
-                }
-                foreach (KeyValuePair<Turn, float> kv in w.transfers) r.transferts.Add(kv);
-                w.transfers.Clear();
-                return r;
-            }
-
-            void WriterLoop(CultureInfo culture)
-            {
-                try
-                {
-                    Thread.CurrentThread.CurrentCulture = culture;
-                    Thread.CurrentThread.CurrentUICulture = culture;
-                    for (long seq = 0; ; seq++)
-                    {
-                        OdResult r;
-                        lock (results)
-                        {
-                            while (true)
-                            {
-                                if (failure != null) return;
-                                if (results.TryGetValue(seq, out r)) { results.Remove(seq); break; }
-                                if (totalGroups >= 0 && seq >= totalGroups) return;
-                                Monitor.Wait(results);
-                            }
-                        }
-                        Ecrit(r);
-                        window.Release();
-                    }
-                }
-                catch (Exception e) { Fail(e); }
-            }
-
-            void Ecrit(OdResult r)
-            {
-                // affichage d'avancement identique a l'original (position de lecture de chaque OD)
-                foreach (long pos in r.positions)
-                {
-                    if (avancement < (int)((100 * pos) / length))
-                    {
-                        Console.SetCursorPosition(cleft, ctop);
-                        Console.Write("Shortest paths computing...:" + ((100 * pos) / length).ToString() + "%");
-                        avancement = (int)((100 * pos) / length);
-                    }
-                }
-                w_od.Write(r.od); w_sortie.Write(r.sortie); w_sortie2.Write(r.sortie2); w_noeuds.Write(r.noeuds);
-                w_detour.Write(r.detour); w_isoles.Write(r.isoles); w_log.Write(r.log);
-                for (int k = 0; k < r.lkIdx.Count; k++)
-                {
-                    accVolau[r.lkIdx[k]] += r.lkVolau[k]; accBoai[r.lkIdx[k]] += r.lkBoai[k]; accAlij[r.lkIdx[k]] += r.lkAlij[k];
-                }
-                for (int k = 0; k < r.svIdx.Count; k++)
-                {
-                    accSvVolau[r.svIdx[k]] += r.svVolau[k]; accSvAlit[r.svIdx[k]] += r.svAlit[k]; accSvBoat[r.svIdx[k]] += r.svBoat[k];
-                }
-                foreach (KeyValuePair<Turn, float> kv in r.transferts)
-                {
-                    double v;
-                    if (trAcc.TryGetValue(kv.Key, out v)) trAcc[kv.Key] = v + kv.Value; else trAcc[kv.Key] = kv.Value;
-                }
-            }
-        }
-
-        // Calcul d'une OD : corps ORIGINAL (plus courts chemins + ecriture des resultats de l'OD),
-        // execute sur les arcs prives du thread. Les sorties vont dans des tampons (StringWriter).
-        static void CalculeOD(OdTask t, OdWorker w, Dictionary<Turn, float> turns,
-            StringWriter fich_sortie, StringWriter fich_sortie2, StringWriter fich_od, StringWriter fich_noeuds,
-            StringWriter fich_detour, StringWriter fich_isoles, StringWriter fich_log)
-        {
-            etude projet = w.projet;
-            Dictionary<Turn, float> transfers = w.transfers;
-            List<List<int>> gga_nq = w.gga_nq;
-            int i, j;
-            string p = t.p, q = t.q, libod = t.libod, chaine = t.chaine;
-            float od = t.od, horaire = t.horaire;
-            int jour = t.jour, sens = t.sens;
-            bool skip = t.skip;
-            HashSet<String> filtre = t.filtre;
-            projet.param_affectation_horaire.nb_pop = 0;
-
-                            if (sens == 1)
-                            {
-                                // (test de doublon deplace dans la lecture sequentielle de la matrice : voir task.skip)
-                                if (skip) goto fin_gga;
+                                p1 = p; q1 = q; jour1 = jour; horaire1 = horaire; sens1 = sens;
                                 for (i = 0; i < projet.reseaux[projet.reseau_actif].links.Count; i++)
                                 {
                                     projet.reseaux[projet.reseau_actif].links[i].pole = "-1";
@@ -2479,7 +1736,7 @@ namespace Muslic
                                                 projet.reseaux[projet.reseau_actif].links[successeur].pole = depart;
                                                 projet.reseaux[projet.reseau_actif].links[successeur].poleV2 = "";
                                                 //bucket = Convert.ToInt32(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout, 2) / projet.param_affectation_horaire.param_dijkstra)), projet.param_affectation_horaire.max_nb_buckets);
-                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
 
                                                 while (bucket >= gga_nq.Count)
                                                 {
@@ -2558,7 +1815,7 @@ namespace Muslic
                                                 projet.reseaux[projet.reseau_actif].links[successeur].ttoll = projet.reseaux[projet.reseau_actif].links[successeur].toll;
                                                 projet.reseaux[projet.reseau_actif].links[successeur].l = projet.reseaux[projet.reseau_actif].links[successeur].longueur;
                                                 //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
 
                                                 while (bucket >= gga_nq.Count)
                                                 {
@@ -2579,16 +1836,18 @@ namespace Muslic
                                 else
                                 {
                                     fich_log.WriteLine("OD error " + libod + ":" + chaine + ": non existing origin node!");
+                                    id_bucket = 1;
                                 }
-                                int bucket_cout_max = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.param_affectation_horaire.temps_max / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                int bucket_cout_max = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.param_affectation_horaire.temps_max / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets - 1)));
                                 //         MessageBox.Show(projet.param_affectation_horaire.algorithme.ToString());
-                                while (gga_nq.Count > id_bucket && bucket_cout_max >= id_bucket)
+                                
+                                while (gga_nq.Count >= id_bucket && bucket_cout_max >= id_bucket)
                                 {
 
                                     while (gga_nq[id_bucket].Count == 0)
                                     {
                                         id_bucket++;
-                                        if (id_bucket == gga_nq.Count || id_bucket == bucket_cout_max )
+                                        if (id_bucket >= gga_nq.Count || id_bucket >= bucket_cout_max+1 )
                                         {
                                             goto fin_gga;
                                         }
@@ -2601,8 +1860,8 @@ namespace Muslic
                                     }
                                     else
                                     {
-                                        int k, id_pivot = -1; double cout_max = 1e38f;
-                                        for (k = 0; k < gga_nq[id_bucket].Count; k++)
+                                        int k, id_pivot = -1; double cout_max = 1e38;
+                                        for (k = 0; k <= gga_nq[id_bucket].Count; k++)
                                         {
                                             if (projet.reseaux[projet.reseau_actif].links[gga_nq[id_bucket][k]].cout < cout_max)
                                             {
@@ -2719,8 +1978,8 @@ namespace Muslic
 
 
                                                         //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
-
+                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
+                                                     
                                                         while (bucket >= gga_nq.Count)
                                                         {
                                                             gga_nq.Add(new List<int>());
@@ -2774,7 +2033,7 @@ namespace Muslic
                                                         projet.reseaux[projet.reseau_actif].links[successeur].tmap = projet.reseaux[projet.reseau_actif].links[pivot].tmap;
                                                         projet.reseaux[projet.reseau_actif].links[successeur].ttoll = projet.reseaux[projet.reseau_actif].links[pivot].ttoll + projet.reseaux[projet.reseau_actif].links[successeur].toll;
 
-                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
 
                                                         //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
                                                         while (bucket >= gga_nq.Count)
@@ -2874,7 +2133,7 @@ namespace Muslic
                                                         projet.reseaux[projet.reseau_actif].links[successeur].ttoll = projet.reseaux[projet.reseau_actif].links[pivot].ttoll + projet.reseaux[projet.reseau_actif].links[successeur].toll;
 
                                                         //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                         while (bucket >= gga_nq.Count)
                                                         {
                                                             gga_nq.Add(new List<int>());
@@ -2915,7 +2174,8 @@ namespace Muslic
                                             {
                                                 int id_service = -1;
                                                 //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
+                                               
                                                 //successeurs marche à pied
                                                 if (projet.reseaux[projet.reseau_actif].links[successeur].ligne < 0 && projet.param_affectation_horaire.cmap[succ_type] > 0 && projet.reseaux[projet.reseau_actif].links[pivot].tmap + projet.reseaux[projet.reseau_actif].links[successeur].temps < projet.param_affectation_horaire.tmapmax)
                                                 {
@@ -2944,10 +2204,10 @@ namespace Muslic
                                                     }
                                                     if (test_periode == true)
                                                     {
-
+                                                        
                                                         if (projet.reseaux[projet.reseau_actif].links[successeur].cout > projet.reseaux[projet.reseau_actif].links[pivot].cout + (penalite + projet.reseaux[projet.reseau_actif].links[successeur].temps) * projet.param_affectation_horaire.coef_tmap[succ_type] * projet.param_affectation_horaire.cmap[succ_type] + projet.reseaux[projet.reseau_actif].links[successeur].toll * projet.param_affectation_horaire.ctoll[succ_type])
                                                         {
-                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                             gga_nq[bucket].Remove(successeur);
                                                             projet.reseaux[projet.reseau_actif].links[successeur].cout = projet.reseaux[projet.reseau_actif].links[pivot].cout + (projet.reseaux[projet.reseau_actif].links[successeur].temps + penalite) * projet.param_affectation_horaire.coef_tmap[succ_type] * projet.param_affectation_horaire.cmap[succ_type] + projet.reseaux[projet.reseau_actif].links[successeur].toll * projet.param_affectation_horaire.ctoll[succ_type];
                                                             projet.reseaux[projet.reseau_actif].links[successeur].h = projet.reseaux[projet.reseau_actif].links[pivot].h + (projet.reseaux[projet.reseau_actif].links[successeur].temps) * projet.param_affectation_horaire.coef_tmap[succ_type] + penalite;
@@ -2978,7 +2238,7 @@ namespace Muslic
 
 
                                                             projet.reseaux[projet.reseau_actif].links[successeur].service = id_service;                                                        //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), ;
-                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                             gga_nq[bucket].Add(successeur);
                                                             projet.param_affectation_horaire.nb_pop++;
                                                         }
@@ -3010,7 +2270,7 @@ namespace Muslic
 
                                                             if (projet.reseaux[projet.reseau_actif].links[successeur].cout > projet.reseaux[projet.reseau_actif].links[pivot].cout + (projet.reseaux[projet.reseau_actif].links[successeur].services[num_service].hf + projet.reseaux[projet.reseau_actif].links[pivot].services[projet.reseaux[projet.reseau_actif].links[pivot].service].delta * 1440f - projet.reseaux[projet.reseau_actif].links[pivot].h) * projet.param_affectation_horaire.cveh[succ_type] + projet.reseaux[projet.reseau_actif].links[successeur].toll * projet.param_affectation_horaire.ctoll[succ_type] && projet.reseaux[projet.reseau_actif].links[successeur].services[num_service].hd >= projet.reseaux[projet.reseau_actif].links[pivot].services[projet.reseaux[projet.reseau_actif].links[pivot].service].hf)
                                                             {
-                                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                                 gga_nq[bucket].Remove(successeur);
                                                                 projet.reseaux[projet.reseau_actif].links[successeur].services[num_service].delta = projet.reseaux[projet.reseau_actif].links[pivot].services[projet.reseaux[projet.reseau_actif].links[pivot].service].delta;
                                                                 projet.reseaux[projet.reseau_actif].links[successeur].service = num_service;
@@ -3032,7 +2292,7 @@ namespace Muslic
                                                                 projet.reseaux[projet.reseau_actif].links[successeur].pole = projet.reseaux[projet.reseau_actif].links[pivot].pole;
                                                                 projet.reseaux[projet.reseau_actif].links[successeur].poleV2 = projet.reseaux[projet.reseau_actif].links[pivot].poleV2;
                                                                 //bucket = Convert.ToInt32(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                                 gga_nq[bucket].Add(successeur);
                                                                 projet.param_affectation_horaire.nb_pop++;
                                                             }
@@ -3096,7 +2356,7 @@ namespace Muslic
                                                     {
                                                         if (projet.reseaux[projet.reseau_actif].links[successeur].cout > projet.reseaux[projet.reseau_actif].links[pivot].cout + (projet.reseaux[projet.reseau_actif].links[successeur].services[num_service].hf - projet.reseaux[projet.reseau_actif].links[successeur].services[num_service].hd) * projet.param_affectation_horaire.cveh[succ_type] + (projet.reseaux[projet.reseau_actif].links[successeur].services[num_service].hd + projet.reseaux[projet.reseau_actif].links[successeur].services[num_service].delta * 1440f - projet.reseaux[projet.reseau_actif].links[pivot].h) * projet.param_affectation_horaire.cwait[succ_type] + (temps_correspondance * projet.param_affectation_horaire.cboa[succ_type]) + projet.reseaux[projet.reseau_actif].links[successeur].toll * projet.param_affectation_horaire.ctoll[succ_type])
                                                         {
-                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                             gga_nq[bucket].Remove(successeur);
                                                             projet.reseaux[projet.reseau_actif].links[successeur].service = num_service;
                                                             projet.reseaux[projet.reseau_actif].links[successeur].cout = projet.reseaux[projet.reseau_actif].links[pivot].cout + (projet.reseaux[projet.reseau_actif].links[successeur].services[num_service].hf - projet.reseaux[projet.reseau_actif].links[successeur].services[num_service].hd) * projet.param_affectation_horaire.cveh[succ_type] + (projet.reseaux[projet.reseau_actif].links[successeur].services[num_service].hd + projet.reseaux[projet.reseau_actif].links[successeur].services[num_service].delta * 1440f - projet.reseaux[projet.reseau_actif].links[pivot].h) * projet.param_affectation_horaire.cwait[succ_type] + (temps_correspondance * projet.param_affectation_horaire.cboa[succ_type]) + projet.reseaux[projet.reseau_actif].links[successeur].toll * projet.param_affectation_horaire.ctoll[succ_type];
@@ -3141,7 +2401,7 @@ namespace Muslic
                                                             }
 
 
-                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[successeur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                             gga_nq[bucket].Add(successeur);
                                                             projet.param_affectation_horaire.nb_pop++;
                                                         }
@@ -3573,8 +2833,12 @@ namespace Muslic
                             // sens heure d'arrivée
                             if (sens == 2)
                             {
-                                // (test de doublon deplace dans la lecture sequentielle de la matrice : voir task.skip)
-                                if (skip) goto fin_gga2;
+                                if (q1 == q && jour1 == jour && horaire1 == horaire && sens1 == sens && ch.Length < 13)
+                                {
+                                    p1 = p;
+                                    goto fin_gga2;
+                                }
+                                p1 = p; q1 = q; jour1 = jour; horaire1 = horaire; sens1 = sens;
 
                                 for (i = 0; i < projet.reseaux[projet.reseau_actif].links.Count; i++)
                                 {
@@ -3665,7 +2929,7 @@ namespace Muslic
                                                 projet.reseaux[projet.reseau_actif].links[predecesseur].pole = depart;
                                                 projet.reseaux[projet.reseau_actif].links[predecesseur].poleV2 = "";
                                                 //                                    bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                 while (bucket >= gga_nq.Count)
                                                 {
                                                     gga_nq.Add(new List<int>());
@@ -3740,7 +3004,7 @@ namespace Muslic
                                                 projet.reseaux[projet.reseau_actif].links[predecesseur].ttoll = projet.reseaux[projet.reseau_actif].links[predecesseur].toll;
 
                                                 //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                 while (bucket >= gga_nq.Count)
                                                 {
                                                     gga_nq.Add(new List<int>());
@@ -3759,17 +3023,18 @@ namespace Muslic
                                 }
                                 else
                                 {
+                                    id_bucket++;
                                     fich_log.WriteLine("OD error" + libod + ":" + chaine + ": non existing destination node!");
                                 }
-                                int bucket_cout_max = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.param_affectation_horaire.temps_max / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                int bucket_cout_max = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.param_affectation_horaire.temps_max / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
 
-                                while (gga_nq.Count > id_bucket && bucket_cout_max >= id_bucket)
+                                while (gga_nq.Count >= id_bucket && bucket_cout_max >= id_bucket)
                                 {
 
                                     while (gga_nq[id_bucket].Count == 0)
                                     {
                                         id_bucket++;
-                                        if (id_bucket >= gga_nq.Count || bucket_cout_max == id_bucket+1)
+                                        if (id_bucket >= gga_nq.Count  || id_bucket>= bucket_cout_max+1)
                                         {
                                             goto fin_gga2;
                                         }
@@ -3783,7 +3048,7 @@ namespace Muslic
                                     else
                                     {
                                         int k, id_pivot = -1; double cout_max = 1e38f;
-                                        for (k = 0; k < gga_nq[id_bucket].Count; k++)
+                                        for (k = 0; k <= gga_nq[id_bucket].Count; k++)
                                         {
                                             if (projet.reseaux[projet.reseau_actif].links[gga_nq[id_bucket][k]].cout < cout_max)
                                             {
@@ -3905,7 +3170,7 @@ namespace Muslic
                                                         projet.reseaux[projet.reseau_actif].links[predecesseur].touche = 1;
 
                                                         //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                         while (bucket >= gga_nq.Count)
                                                         {
                                                             gga_nq.Add(new List<int>());
@@ -3964,7 +3229,7 @@ namespace Muslic
                                                         projet.reseaux[projet.reseau_actif].links[predecesseur].l = projet.reseaux[projet.reseau_actif].links[pivot].l + projet.reseaux[projet.reseau_actif].links[predecesseur].longueur;
                                                         projet.reseaux[projet.reseau_actif].links[predecesseur].touche = 1;
                                                         // bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                         while (bucket >= gga_nq.Count)
                                                         {
                                                             gga_nq.Add(new List<int>());
@@ -4010,7 +3275,7 @@ namespace Muslic
                                                         projet.reseaux[projet.reseau_actif].links[predecesseur].ttoll = projet.reseaux[projet.reseau_actif].links[pivot].ttoll + projet.reseaux[projet.reseau_actif].links[predecesseur].toll;
 
                                                         //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                         while (bucket >= gga_nq.Count)
                                                         {
                                                             gga_nq.Add(new List<int>());
@@ -4103,7 +3368,7 @@ namespace Muslic
                                                         projet.reseaux[projet.reseau_actif].links[predecesseur].ttoll = projet.reseaux[projet.reseau_actif].links[pivot].ttoll + projet.reseaux[projet.reseau_actif].links[predecesseur].toll;
 
                                                         //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                         while (bucket >= gga_nq.Count)
                                                         {
                                                             gga_nq.Add(new List<int>());
@@ -4195,7 +3460,7 @@ namespace Muslic
                                                         projet.reseaux[projet.reseau_actif].links[predecesseur].ttoll = projet.reseaux[projet.reseau_actif].links[pivot].ttoll + projet.reseaux[projet.reseau_actif].links[predecesseur].toll;
 
                                                         projet.reseaux[projet.reseau_actif].links[predecesseur].l = projet.reseaux[projet.reseau_actif].links[pivot].l + projet.reseaux[projet.reseau_actif].links[predecesseur].longueur;                                                //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                        bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                         while (bucket >= gga_nq.Count)
                                                         {
                                                             gga_nq.Add(new List<int>());
@@ -4217,7 +3482,7 @@ namespace Muslic
                                             else if (projet.reseaux[projet.reseau_actif].links[predecesseur].touche == 1 || projet.reseaux[projet.reseau_actif].links[predecesseur].touche == 2)
                                             {
                                                 //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
 
 
                                                 //successeurs marche à pied pivot MAP
@@ -4254,7 +3519,7 @@ namespace Muslic
                                                         if (projet.reseaux[projet.reseau_actif].links[predecesseur].cout > projet.reseaux[projet.reseau_actif].links[pivot].cout + (penalite + projet.reseaux[projet.reseau_actif].links[predecesseur].temps) * projet.param_affectation_horaire.coef_tmap[pred_type] * projet.param_affectation_horaire.cmap[pred_type] + projet.reseaux[projet.reseau_actif].links[predecesseur].toll * projet.param_affectation_horaire.ctoll[pred_type])
                                                         {
 
-                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                             gga_nq[bucket].Remove(predecesseur);
                                                             projet.reseaux[projet.reseau_actif].links[predecesseur].cout = projet.reseaux[projet.reseau_actif].links[pivot].cout + (penalite + projet.reseaux[projet.reseau_actif].links[predecesseur].temps) * projet.param_affectation_horaire.coef_tmap[pred_type] * projet.param_affectation_horaire.cmap[pred_type] + projet.reseaux[projet.reseau_actif].links[predecesseur].toll * projet.param_affectation_horaire.ctoll[pred_type];
                                                             projet.reseaux[projet.reseau_actif].links[predecesseur].h = projet.reseaux[projet.reseau_actif].links[pivot].h - (projet.reseaux[projet.reseau_actif].links[predecesseur].temps) * projet.param_affectation_horaire.coef_tmap[pred_type] - penalite;
@@ -4277,7 +3542,7 @@ namespace Muslic
                                                             projet.reseaux[projet.reseau_actif].links[predecesseur].service = id_service;
 
                                                             //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                             gga_nq[bucket].Add(predecesseur);
                                                             projet.param_affectation_horaire.nb_pop++;
 
@@ -4319,7 +3584,7 @@ namespace Muslic
 
                                                         if (projet.reseaux[projet.reseau_actif].links[predecesseur].cout > projet.reseaux[projet.reseau_actif].links[pivot].cout + (penalite + projet.reseaux[projet.reseau_actif].links[predecesseur].temps) * projet.param_affectation_horaire.coef_tmap[pred_type] * projet.param_affectation_horaire.cmap[pred_type] + projet.param_affectation_horaire.cboa[pivot_type] * temps_correspondance + projet.param_affectation_horaire.cwait[pred_type] * temps_correspondance + projet.reseaux[projet.reseau_actif].links[predecesseur].toll * projet.param_affectation_horaire.ctoll[pred_type])
                                                         {
-                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                             gga_nq[bucket].Remove(predecesseur);
                                                             projet.reseaux[projet.reseau_actif].links[predecesseur].cout = projet.reseaux[projet.reseau_actif].links[pivot].cout + (penalite + projet.reseaux[projet.reseau_actif].links[predecesseur].temps) * projet.param_affectation_horaire.coef_tmap[pred_type] * projet.param_affectation_horaire.cmap[pred_type] + projet.param_affectation_horaire.cboa[pivot_type] * temps_correspondance + projet.param_affectation_horaire.cwait[pred_type] * temps_correspondance + projet.reseaux[projet.reseau_actif].links[predecesseur].toll * projet.param_affectation_horaire.ctoll[pred_type];
                                                             projet.reseaux[projet.reseau_actif].links[predecesseur].h = projet.reseaux[projet.reseau_actif].links[pivot].h - (projet.reseaux[projet.reseau_actif].links[predecesseur].temps) * projet.param_affectation_horaire.coef_tmap[pred_type] - temps_correspondance - penalite;
@@ -4342,7 +3607,7 @@ namespace Muslic
 
                                                             projet.reseaux[projet.reseau_actif].links[predecesseur].service = id_service;
                                                             //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                             gga_nq[bucket].Add(predecesseur);
                                                             projet.param_affectation_horaire.nb_pop++;
 
@@ -4374,7 +3639,7 @@ namespace Muslic
 
                                                             if (projet.reseaux[projet.reseau_actif].links[predecesseur].cout > projet.reseaux[projet.reseau_actif].links[pivot].cout + (-projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].hd - projet.reseaux[projet.reseau_actif].links[pivot].services[projet.reseaux[projet.reseau_actif].links[pivot].service].delta * 1440f + projet.reseaux[projet.reseau_actif].links[pivot].h) * projet.param_affectation_horaire.cveh[pred_type] + projet.reseaux[projet.reseau_actif].links[predecesseur].toll * projet.param_affectation_horaire.ctoll[pred_type] && (projet.reseaux[projet.reseau_actif].links[predecesseur].services[projet.reseaux[projet.reseau_actif].links[predecesseur].service].hf <= projet.reseaux[projet.reseau_actif].links[pivot].services[projet.reseaux[projet.reseau_actif].links[pivot].service].hd))
                                                             {
-                                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                                 gga_nq[bucket].Remove(predecesseur);
                                                                 projet.reseaux[projet.reseau_actif].links[predecesseur].service = num_service;
                                                                 projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].delta = projet.reseaux[projet.reseau_actif].links[pivot].services[projet.reseaux[projet.reseau_actif].links[pivot].service].delta;
@@ -4397,7 +3662,7 @@ namespace Muslic
                                                                 projet.reseaux[projet.reseau_actif].links[predecesseur].poleV2 = projet.reseaux[projet.reseau_actif].links[pivot].poleV2;
 
                                                                 //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                                bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                                 gga_nq[bucket].Add(predecesseur);
                                                                 projet.param_affectation_horaire.nb_pop++;
                                                             }
@@ -4461,7 +3726,7 @@ namespace Muslic
                                                     {
                                                         if (projet.reseaux[projet.reseau_actif].links[predecesseur].cout > projet.reseaux[projet.reseau_actif].links[pivot].cout + (projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].hf - projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].hd) * projet.param_affectation_horaire.cveh[pred_type] + (-projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].hf - projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].delta * 1440f + projet.reseaux[projet.reseau_actif].links[pivot].h) * projet.param_affectation_horaire.cwait[pred_type] + (temps_correspondance * projet.param_affectation_horaire.cboa[pivot_type]) + projet.reseaux[projet.reseau_actif].links[predecesseur].toll * projet.param_affectation_horaire.ctoll[pred_type])
                                                         {
-                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                             gga_nq[bucket].Remove(predecesseur);
                                                             projet.reseaux[projet.reseau_actif].links[predecesseur].service = num_service;
                                                             projet.reseaux[projet.reseau_actif].links[predecesseur].cout = projet.reseaux[projet.reseau_actif].links[pivot].cout + (projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].hf - projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].hd) * projet.param_affectation_horaire.cveh[pred_type] + (-projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].hf - projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].delta * 1440f + projet.reseaux[projet.reseau_actif].links[pivot].h) * projet.param_affectation_horaire.cwait[pred_type] + (temps_correspondance * projet.param_affectation_horaire.cboa[pivot_type]) + projet.reseaux[projet.reseau_actif].links[predecesseur].toll * projet.param_affectation_horaire.ctoll[pred_type];
@@ -4491,7 +3756,7 @@ namespace Muslic
                                                             projet.reseaux[projet.reseau_actif].links[predecesseur].poleV2 = "|" + projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[predecesseur].nd].i + "|" + projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[predecesseur].nd].i + projet.reseaux[projet.reseau_actif].links[pivot].poleV2;
 
                                                             //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                             gga_nq[bucket].Add(predecesseur);
                                                             projet.param_affectation_horaire.nb_pop++;
                                                         }
@@ -4555,7 +3820,7 @@ namespace Muslic
                                                         if (projet.reseaux[projet.reseau_actif].links[predecesseur].cout > projet.reseaux[projet.reseau_actif].links[pivot].cout + (projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].hf - projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].hd) * projet.param_affectation_horaire.cveh[pred_type] + (-projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].hf - projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].delta * 1440f + projet.reseaux[projet.reseau_actif].links[pivot].h) * projet.param_affectation_horaire.cwait[pred_type] + projet.reseaux[projet.reseau_actif].links[predecesseur].toll * projet.param_affectation_horaire.ctoll[pred_type])
                                                         {
 
-                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                             gga_nq[bucket].Remove(predecesseur);
                                                             projet.reseaux[projet.reseau_actif].links[predecesseur].service = num_service;
                                                             projet.reseaux[projet.reseau_actif].links[predecesseur].cout = projet.reseaux[projet.reseau_actif].links[pivot].cout + (projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].hf - projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].hd) * projet.param_affectation_horaire.cveh[pred_type] + (-projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].hf - projet.reseaux[projet.reseau_actif].links[predecesseur].services[num_service].delta * 1440f + projet.reseaux[projet.reseau_actif].links[pivot].h) * projet.param_affectation_horaire.cwait[pred_type] + projet.reseaux[projet.reseau_actif].links[predecesseur].toll * projet.param_affectation_horaire.ctoll[pred_type];
@@ -4584,7 +3849,7 @@ namespace Muslic
                                                             projet.reseaux[projet.reseau_actif].links[predecesseur].pole = projet.reseaux[projet.reseau_actif].links[pivot].pole;
                                                             projet.reseaux[projet.reseau_actif].links[predecesseur].poleV2 = "|" + projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[predecesseur].nd].i + projet.reseaux[projet.reseau_actif].links[pivot].poleV2;
                                                             //bucket = (int)Math.Truncate(Math.Min((Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout, 2) / projet.param_affectation_horaire.param_dijkstra), projet.param_affectation_horaire.max_nb_buckets));
-                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets)));
+                                                            bucket = Convert.ToInt32(Math.Truncate(Math.Min(Math.Pow(projet.reseaux[projet.reseau_actif].links[predecesseur].cout / projet.param_affectation_horaire.param_dijkstra, projet.param_affectation_horaire.pu), projet.param_affectation_horaire.max_nb_buckets-1)));
                                                             gga_nq[bucket].Add(predecesseur);
                                                             projet.param_affectation_horaire.nb_pop++;
                                                         }
@@ -5036,6 +4301,353 @@ namespace Muslic
                                     }
                                 }
                             }
+
+                        }
+                        fichier_matrice.Close();
+                        flux_matrice.Close();
+                        DateTime t2 = DateTime.Now;
+                        fich_log.WriteLine("Computation end time: " + t2.ToString("dddd dd MMMM yyyy HH:mm:ss.fff"));
+                        fich_log.WriteLine("Computation duration:" + t2.Subtract(t1).TotalSeconds + " sec");
+                        fich_log.Close();
+
+                        fich_sortie.Close();
+                        fich_sortie2.Close();
+                        fich_od.Close();
+                        fich_noeuds.Close();
+                        fich_detour.Close();
+                        fich_isoles.Close();
+
+
+
+
+                        for (i = 0; i < projet.reseaux[projet.reseau_actif].links.Count; i++)
+                        {
+                            if (projet.reseaux[projet.reseau_actif].links[i].volau > 0 || projet.reseaux[projet.reseau_actif].links[i].boai > 0 || projet.reseaux[projet.reseau_actif].links[i].alij > 0)
+                            {
+                                string texte = projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[i].no].i;
+                                texte += ";" + projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[i].nd].i + ";" + projet.reseaux[projet.reseau_actif].links[i].ligne.ToString("0");
+                                texte += ";" + projet.reseaux[projet.reseau_actif].links[i].volau.ToString("0.00");
+                                texte += ";" + projet.reseaux[projet.reseau_actif].links[i].boai.ToString("0.00");
+                                texte += ";" + projet.reseaux[projet.reseau_actif].links[i].alij.ToString("0.00");
+                                texte += ";" + projet.reseaux[projet.reseau_actif].links[i].texte;
+                                texte += ";" + projet.reseaux[projet.reseau_actif].links[i].type;
+                                texte += ";" + projet.reseaux[projet.reseau_actif].links[i].toll.ToString("0.000");
+
+                                fich_result.WriteLine(texte);
+                            }
+
+                        }
+
+
+                        fich_result.Close();
+                        //projet.reseaux.Remove(projet.reseaux[projet.reseau_actif]);
+                        if (projet.param_affectation_horaire.sortie_services == true)
+                        {
+                            System.IO.StreamWriter fich_services = new System.IO.StreamWriter(projet.param_affectation_horaire.nom_sortie + "_services.txt", false, System.Text.Encoding.UTF8);
+                            string texte = "";
+                            fich_services.WriteLine("i;j;ligne;service;hd;hf;regime;volau;boia;alij;texte;type");
+                            for (i = 0; i < projet.reseaux[projet.reseau_actif].links.Count; i++)
+                            {
+                                if (projet.reseaux[projet.reseau_actif].links[i].services.Count > 0)
+                                {
+                                    for (j = 0; j < projet.reseaux[projet.reseau_actif].links[i].services.Count; j++)
+                                    {
+                                        if (projet.reseaux[projet.reseau_actif].links[i].services[j].volau > 0)
+                                        {
+                                            texte = projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[i].no].i;
+                                            texte += ";" + projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[i].nd].i + ";" + projet.reseaux[projet.reseau_actif].links[i].ligne.ToString("0");
+                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].services[j].numero;
+                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].services[j].hd;
+                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].services[j].hf;
+                                            texte += ";" + projet.reseaux[projet.reseau_actif].nom_calendrier[projet.reseaux[projet.reseau_actif].links[i].services[j].regime];
+                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].services[j].volau.ToString("0.00");
+                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].services[j].boat.ToString("0.00");
+                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].services[j].alit.ToString("0.00");
+                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].texte;
+                                            texte += ";" + projet.reseaux[projet.reseau_actif].links[i].type;
+                                            fich_services.WriteLine(texte);
+
+                                        }
+                                    }
+                                }
+
+
+                            }
+                            fich_services.Close();
+
+                        }
+                        if (projet.param_affectation_horaire.sortie_turns == true)
+                        {
+                            System.IO.StreamWriter fich_turns = new System.IO.StreamWriter(projet.param_affectation_horaire.nom_sortie + "_transferts.txt", false, System.Text.Encoding.UTF8);
+                            string texte = "";
+                            //int k=0;
+                            fich_turns.WriteLine("j;i;lignei;k;lignek;textei;textek;volau");
+
+                            foreach (Turn virage in transfers.Keys)
+                            {
+
+                                if (transfers[virage] > 0)
+                                {
+                                    texte = projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[virage.arci].nd].i;
+
+                                    texte += ";" + projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[virage.arci].no].i;
+                                    texte += ";" + projet.reseaux[projet.reseau_actif].links[virage.arci].ligne;
+                                    texte += ";" + projet.reseaux[projet.reseau_actif].nodes[projet.reseaux[projet.reseau_actif].links[virage.arcj].nd].i;
+                                    texte += ";" + projet.reseaux[projet.reseau_actif].links[virage.arcj].ligne;
+                                    texte += ";" + projet.reseaux[projet.reseau_actif].links[virage.arci].texte;
+                                    texte += ";" + projet.reseaux[projet.reseau_actif].links[virage.arcj].texte;
+                                    texte += ";" + transfers[virage];
+                                    fich_turns.WriteLine(texte);
+                                }
+
+
+
+
+
+
+
+
+
+
+                            }
+                            fich_turns.Close();
+
+                        }
+
+
+                    }
+
+
+                    //algorithme de Dijkstra
+
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+                    //algorithme de Dijkstra
+
+
+                    //algorithme de Dijkstra
+
+                    else if (projet.param_affectation_horaire.algorithme == 2)
+                    {
+
+
+                    }
+                }
+
+
+            }
+        }
+
+        public class vecteur
+        {
+            public List<float> d = new List<float>(0);
+
+        }
+
+
+        public class Turn
+        {
+            public int arci, arcj;
+
+            public override bool Equals(Object virage)
+            {
+                if (arci == ((Turn)virage).arci && arcj == ((Turn)virage).arcj)
+                {
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            public override int GetHashCode()
+            {
+                return arci.GetHashCode() ^ arcj.GetHashCode();
+            }
+
+        }
+
+        public class turn
+        {
+            public int numero;
+            public float temps;
+            public bool is_valid = false;
+            //public float volau=0;
+
+        }
+
+        public class node
+        {
+            public float x, y, tempst = 1e38f, tmap = 0, tatt, temps, cout, ncor, ttoll;
+            public string i;
+            public bool ci = false, is_valid = true, is_visible = false, is_intersection = false;
+            public List<int> pred = new List<int>();
+            public List<int> succ = new List<int>();
+            //public List<float> ui = new List<float>();
+            public string texte;
+            public string pole;
+        }
+        public class Link_num
+        {
+            public String i, j;
+            public int line;
+            public override bool Equals(object num_link)
+            {
+                if (i == ((Link_num)num_link).i && j == ((Link_num)num_link).j && line == ((Link_num)num_link).line)
+                {
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            public override int GetHashCode()
+            {
+                return (i.GetHashCode() ^ j.GetHashCode() ^ line.GetHashCode());
+            }
+        }
+        public class link
+        {
+            public float longueur, temps, cout, v0, vsat, tatt, tcor, tveh, tmap, tatt1, a, b, n, volau, lanes, h, l, alij, boai, ncorr, toll = 0, ttoll;
+            public int no, nd, service, vdf, touche, pivot, ligne, turn_pivot = -1;//,nb_voies;
+            public bool is_queue, is_valid = true;
+            //public List<turn> arci = new List<turn>();
+            //public List<turn> arcj = new List<turn>();
+            //public List<float> ul = new List<float>();
+            public List<Service> services = new List<Service>();
+            public string texte, modes, pole, type = "0", poleV2;
+            /*public float fd(float volau, float len, float precha, float cap, float v0, float a, float b, float n)
+            {
+                float vc, t0, delay;
+                t0 = len / v0;
+                vc = (volau + precha) / cap;
+                if (vc < 1)
+                {
+                    delay = t0 * (a - b * vc) / (a - vc);
+                }
+                else
+                {
+                    delay = t0 * ((a * (1f - b)) / (n * (a - 1f) * (a - 1f))) * (float)Math.Pow(vc, n) + (n * (a - b) * (a - 1f) - a * (1f - b)) / (n * (a - 1f) * (a - 1f));
+                }
+                return delay;
+            }*/
+        }
+
+
+        public class matrix
+        {
+            public string nom;
+            public List<vecteur> o = new List<vecteur>(0);
+
+        }
+
+        public class network
+        {
+            public string nom;
+            public List<link> links = new List<link>(20000);
+            public List<node> nodes = new List<node>(10000);
+            public float xl = 1e38f, xu = -1e38f, yl = 1e38f, yu = -1e38f;
+            public List<matrix> matrices = new List<matrix>();
+            public Dictionary<string, int> numnoeud = new Dictionary<string, int>();
+            public Dictionary<string, int> num_calendrier = new Dictionary<string, int>();
+            public List<string> nom_calendrier = new List<string>();
+            public Dictionary<string, string> noms_arcs = new Dictionary<string, string>();
+            public int max_type = 0, nbturns = 0, nbservices = 0;
+        }
+
+        public class etude
+        {
+            public string nom;
+            public int reseau_actif;
+            public List<network> reseaux = new List<network>();
+            public Param_affectation_horaire param_affectation_horaire = new Param_affectation_horaire();
+
+        }
+
+        public class Param_affectation_horaire
+        {
+            public string nom_reseau, nom_matrice, nom_sortie, nom_penalites;
+            public Dictionary<String, float> coef_tmap = new Dictionary<String, float>();
+            public Dictionary<String, float> cmap = new Dictionary<String, float>();
+            public Dictionary<String, float> cwait = new Dictionary<String, float>();
+            public Dictionary<String, float> cboa = new Dictionary<String, float>();
+            public Dictionary<String, float> tboa = new Dictionary<String, float>();
+            public Dictionary<String, float> tboa_max = new Dictionary<String, float>(1);
+            public Dictionary<String, float> cveh = new Dictionary<String, float>(1);
+            public Dictionary<String, float> ctoll = new Dictionary<String, float>(1);
+            public float param_dijkstra, pu;
+            public bool sortie_chemins, demitours = true, sortie_services = false, sortie_turns = false, test_OK = false, sortie_noeuds = true, sortie_isoles = false, sortie_stops = false;
+            public int sortie_temps;
+            public int algorithme = 1;
+            public float max_nb_buckets = 10000;
+            public int nb_jours = 0;
+            public string texte_coef_tmap;
+            public string texte_cmap;
+            public string texte_cwait;
+            public string texte_cboa;
+            public string texte_tboa;
+            public string texte_tboa_max;
+            public string texte_cveh, texte_toll;
+            public float tmapmax, temps_max = 120;
+            public int nb_pop = 0;
+            public string texte_filtre_sortie = "";
+        }
+
+        public class Service
+        {
+            public int numero;
+            public float hd, hf, delta = 0, boai = 0, alij = 0, alit = 0, boat = 0, volau = 0;
+            public int regime;
+        }
+
+        public class suivant
+        {
+            public List<int> classe = new List<int>();
+
+        }
+
+
+
+        public class Node
+        {
+            public string i = "";
+            public float x = 0, y = 0, tempst = 1e38f, tmap = 0, tatt, temps, cout, ncor, ttoll;
+            public string name = "";
+            public string pole, poleV2;
+            public List<int> in_nodes = new List<int>();
+            public List<int> out_nodes = new List<int>();
+            public void addincoming(int i)
+            {
+                this.in_nodes.Add(i);
+            }
+            public void addoutgoing(int i)
+            {
+                this.out_nodes.Add(i);
+            }
+
+        }
+
+        public class Link
+        {
+
         }
 
         public static bool test_temps_per_min_depart(etude projet, int arrivee)
